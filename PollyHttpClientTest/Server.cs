@@ -6,12 +6,10 @@ using Polly;
 
 namespace PollyHttpClientTest
 {
-   public class Server
+    public class Server
     {
-
         public async void Run()
         {
-
             HttpConnect();
 
 
@@ -19,25 +17,22 @@ namespace PollyHttpClientTest
             var pauseBetweenFailures = TimeSpan.FromSeconds(2);
 
             var retryPolicy = Policy
-                .Handle<ArgumentException>()
+                .HandleResult<HttpResponseMessage>(x => !x.IsSuccessStatusCode)
                 .WaitAndRetryAsync(maxRetryAttempts, i => pauseBetweenFailures);
 
             var retryAndExitPolicy = Policy
                 .Handle<ArgumentException>()
                 .WaitAndRetryAsync(maxRetryAttempts, i => pauseBetweenFailures);
 
-           var t= await retryAndExitPolicy.ExecuteAndCaptureAsync(GetExeption);
-            await retryPolicy.ExecuteAsync(GetExeption);
+            //  var t= await retryAndExitPolicy.ExecuteAndCaptureAsync(GetExeption);
+            // var response =  await retryPolicy.ExecuteAsync(GetExeption);
 
-
-
+            var response = await retryPolicy.ExecuteAsync(() => GetAsync2("http://github.com/githubappulate"));
         }
 
-        private  void HttpConnect()
+        private async void HttpConnect()
         {
-
-
-          //  var result = GetAsync("https://example.com/api/products/1").GetAwaiter().GetResult();
+            //  var result = GetAsync("https://example.com/api/products/1").GetAwaiter().GetResult();
 
             //Console.WriteLine("попытка");
             //var response = httpClient
@@ -48,24 +43,24 @@ namespace PollyHttpClientTest
             var retryEnabledHttpClient = new RetryEnabledHttpClientProxy(httpMessage);
 
 
-
-            var response = retryEnabledHttpClient
-                .GetAsync("https://github.com/githubappulate").GetAwaiter().GetResult();
+            var response = await retryEnabledHttpClient
+                .GetAsync("https://github.com/githubappulate");
             //   .GetAsync("https://example.com/api/products/1").GetAwaiter().GetResult();
         }
 
 
-        public async Task<HttpResponseMessage> GetAsync(string requestUri) {
-
+        public async Task<HttpResponseMessage> GetAsync(string requestUri)
+        {
             HttpClient client = new HttpClient();
             HttpResponseMessage result = null;
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 20; i++)
             {
                 result = await client.GetAsync(requestUri);
-                Thread.Sleep(10000);
+                Thread.Sleep(2000);
                 if (result.IsSuccessStatusCode) break;
                 Console.WriteLine($"Retrying1: {i + 1}");
             }
+
             return result;
         }
 
@@ -77,6 +72,12 @@ namespace PollyHttpClientTest
         }
 
 
-
+        private async Task<HttpResponseMessage> GetAsync2(string requestUri)
+        {
+            Console.WriteLine($"попытка");
+            HttpClient client = new HttpClient();
+            var result = await client.GetAsync(requestUri);
+            return result;
+        }
     }
 }

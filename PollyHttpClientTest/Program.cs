@@ -10,7 +10,7 @@ namespace PollyHttpClientTest
     {
         static void Main(string[] args)
         {
-            new Server().Run();
+            new RetryPollyServer().Run();
 
 
             Console.WriteLine("Нажмите любую кнопку...");

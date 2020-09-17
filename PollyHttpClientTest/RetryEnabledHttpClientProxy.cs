@@ -13,85 +13,119 @@ using Polly;
 using Polly.Extensions.Http;
 using Polly.Retry;
 
-namespace PollyHttpClientTest {
-	public class RetryEnabledHttpClientProxy: IDisposable {
-		private readonly HttpClient _httpClient;
+namespace PollyHttpClientTest
+{
+    public class RetryEnabledHttpClientProxy : IDisposable
+    {
+        private readonly HttpClient _httpClient;
 
-		~RetryEnabledHttpClientProxy() {
-			Dispose(disposing: false);
-		}
 
-		/// <summary>
-		///     Please, do not use constructor directly. HttpClientProxy should be used only as SingleInstance services, registered
-		///     in Autofac
-		/// </summary>
-		[SuppressMessage("Microsoft.Reliability", "CA2000:Dispose objects before losing scope", Scope = "Member", Justification = "Delegation of ownership")]
-		public RetryEnabledHttpClientProxy(HttpMessageHandler httpMessageHandler) {
-			AsyncRetryPolicy<HttpResponseMessage> retryPolicy = HttpPolicyExtensions
-			                                                    .HandleTransientHttpError() // HttpRequestException, 5XX and 408
-                                                                .OrResult(response => (int)response.StatusCode == 404)
-			                                                    .WaitAndRetryAsync(new[] {
-				                                                    TimeSpan.FromSeconds(10),
-                                                                    TimeSpan.FromSeconds(10)
-                                                                });
-			var policyHttpMessageHandler = new PolicyHttpMessageHandler(retryPolicy);
-			try {
-				policyHttpMessageHandler.InnerHandler = httpMessageHandler;
-				_httpClient = new HttpClient(policyHttpMessageHandler);
-			} catch {
-				policyHttpMessageHandler.Dispose();
-				throw;
-			}
-		}
-
-		//public async Task<HttpResponseMessage> GetAsync(string requestUri) {
-  //          HttpResponseMessage result = null;
-  //          for (int i = 0; i < 6; i++)
-  //          {
-  //             result = await _httpClient.GetAsync(requestUri);
-  //             if (result.IsSuccessStatusCode) break;
-  //              Console.WriteLine($"Retrying1: {i + 1}");
-  //          }
-  //          return result;
-		//}
-
-        public async Task<HttpResponseMessage> GetAsync(string requestUri) {
-                return await _httpClient.GetAsync(requestUri);
+        ~RetryEnabledHttpClientProxy()
+        {
+            Dispose(disposing: false);
         }
 
-		public async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken) {
-			return await _httpClient.GetAsync(requestUri, cancellationToken);
-		}
+        private const int MaxRetryAttempts = 20;
+        private TimeSpan _pauseBetweenFailures = TimeSpan.FromSeconds(2);
+        private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy;
 
-		public async Task<HttpResponseMessage> PostAsync(string requestUri, HttpContent content) {
-			return await _httpClient.PostAsync(requestUri, content);
-		}
+        /// <summary>
+        ///     Please, do not use constructor directly. HttpClientProxy should be used only as SingleInstance services, registered
+        ///     in Autofac
+        /// </summary>
+        [SuppressMessage("Microsoft.Reliability", "CA2000:Dispose objects before losing scope", Scope = "Member",
+            Justification = "Delegation of ownership")]
+        public RetryEnabledHttpClientProxy(HttpMessageHandler httpMessageHandler)
+        {
+            _retryPolicy = Policy
+                .HandleResult<HttpResponseMessage>(x => !x.IsSuccessStatusCode)
+                .WaitAndRetryAsync(MaxRetryAttempts, i => _pauseBetweenFailures);
 
-		public async Task<HttpResponseMessage> PostAsync(string requestUri, HttpContent content, CancellationToken cancellationToken) {
-			return await _httpClient.PostAsync(requestUri, content, cancellationToken);
-		}
+            //         var pauseBetweenFailures = TimeSpan.FromSeconds(2);
+            //AsyncRetryPolicy<HttpResponseMessage> retryPolicy = HttpPolicyExtensions
+            //                                                    .HandleTransientHttpError() // HttpRequestException, 5XX and 408
+            //                                                             .OrResult(response => (int)response.StatusCode == 404)
+            //                                                    .WaitAndRetryAsync(2, i => pauseBetweenFailures
+            //                                                             );
 
-		public Task<HttpResponseMessage> SendAsync(HttpRequestMessage requestMessage) {
-			return _httpClient.SendAsync(requestMessage);
-		}
+            //var policyHttpMessageHandler = new PolicyHttpMessageHandler(retryPolicy);
+            try
+            {
+                //	policyHttpMessageHandler.InnerHandler = httpMessageHandler;
+                _httpClient = new HttpClient();
+            }
+            catch
+            {
+                //	policyHttpMessageHandler.Dispose();
+                throw;
+            }
+        }
 
-		public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage requestMessage, CancellationToken cancellationToken) {
-			return await _httpClient.SendAsync(requestMessage, cancellationToken);
-		}
+        //public async Task<HttpResponseMessage> GetAsync(string requestUri) {
+        //          HttpResponseMessage result = null;
+        //          for (int i = 0; i < 6; i++)
+        //          {
+        //             result = await _httpClient.GetAsync(requestUri);
+        //             if (result.IsSuccessStatusCode) break;
+        //              Console.WriteLine($"Retrying1: {i + 1}");
+        //          }
+        //          return result;
+        //}
 
-		public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage requestMessage, HttpCompletionOption completionOption, CancellationToken cancellationToken) {
-			return await _httpClient.SendAsync(requestMessage, completionOption, cancellationToken);
-		}
+        public async Task<HttpResponseMessage> GetAsync(string requestUri)
+        {
+            return await _retryPolicy.ExecuteAsync(() => _httpClient.GetAsync(requestUri));
+        }
 
-		protected virtual void Dispose(bool disposing) {
-			if (disposing) {
-				_httpClient.Dispose();
-			}
-		}
+        //public async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken) {
+        //	return await _httpClient.GetAsync(requestUri, cancellationToken);
+        //}
 
-		public void Dispose() {
-			Dispose(disposing: true);
-			GC.SuppressFinalize(this);
-		}
-	}
+        public async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken)
+        {
+            return await _httpClient.GetAsync(requestUri, cancellationToken);
+        }
+
+        public async Task<HttpResponseMessage> PostAsync(string requestUri, HttpContent content)
+        {
+            return await _httpClient.PostAsync(requestUri, content);
+        }
+
+        public async Task<HttpResponseMessage> PostAsync(string requestUri, HttpContent content,
+            CancellationToken cancellationToken)
+        {
+            return await _httpClient.PostAsync(requestUri, content, cancellationToken);
+        }
+
+        public Task<HttpResponseMessage> SendAsync(HttpRequestMessage requestMessage)
+        {
+            return _httpClient.SendAsync(requestMessage);
+        }
+
+        public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage requestMessage,
+            CancellationToken cancellationToken)
+        {
+            return await _httpClient.SendAsync(requestMessage, cancellationToken);
+        }
+
+        public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage requestMessage,
+            HttpCompletionOption completionOption, CancellationToken cancellationToken)
+        {
+            return await _httpClient.SendAsync(requestMessage, completionOption, cancellationToken);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _httpClient.Dispose();
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+    }
 }
