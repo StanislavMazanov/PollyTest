@@ -37,49 +37,28 @@ namespace PollyHttpClientTest
             Justification = "Delegation of ownership")]
         public RetryEnabledHttpClientProxy(HttpMessageHandler httpMessageHandler)
         {
-            _retryPolicy = Policy
-                .HandleResult<HttpResponseMessage>(x => !x.IsSuccessStatusCode)
-                .WaitAndRetryAsync(MaxRetryAttempts, i => _pauseBetweenFailures);
-
-            //         var pauseBetweenFailures = TimeSpan.FromSeconds(2);
-            //AsyncRetryPolicy<HttpResponseMessage> retryPolicy = HttpPolicyExtensions
-            //                                                    .HandleTransientHttpError() // HttpRequestException, 5XX and 408
-            //                                                             .OrResult(response => (int)response.StatusCode == 404)
-            //                                                    .WaitAndRetryAsync(2, i => pauseBetweenFailures
-            //                                                             );
-
-            //var policyHttpMessageHandler = new PolicyHttpMessageHandler(retryPolicy);
-            try
-            {
-                //	policyHttpMessageHandler.InnerHandler = httpMessageHandler;
-                _httpClient = new HttpClient();
-            }
-            catch
-            {
-                //	policyHttpMessageHandler.Dispose();
+            AsyncRetryPolicy<HttpResponseMessage> retryPolicy = HttpPolicyExtensions
+                .HandleTransientHttpError() // HttpRequestException, 5XX and 408
+                .OrResult(r => r.StatusCode == HttpStatusCode.NotFound)
+                .WaitAndRetryAsync(new[] {
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromSeconds(10)
+                }, (x, i) => x.Result.Dispose());
+            var policyHttpMessageHandler = new PolicyHttpMessageHandler(retryPolicy);
+            try {
+                var timeoutHandler = new TimeoutHandler {InnerHandler = httpMessageHandler};
+                policyHttpMessageHandler.InnerHandler = timeoutHandler;
+                _httpClient = new HttpClient(policyHttpMessageHandler);
+            } catch {
+                policyHttpMessageHandler.Dispose();
                 throw;
             }
         }
 
-        //public async Task<HttpResponseMessage> GetAsync(string requestUri) {
-        //          HttpResponseMessage result = null;
-        //          for (int i = 0; i < 6; i++)
-        //          {
-        //             result = await _httpClient.GetAsync(requestUri);
-        //             if (result.IsSuccessStatusCode) break;
-        //              Console.WriteLine($"Retrying1: {i + 1}");
-        //          }
-        //          return result;
-        //}
-
-        public async Task<HttpResponseMessage> GetAsync(string requestUri)
-        {
-            return await _retryPolicy.ExecuteAsync(() => _httpClient.GetAsync(requestUri));
+        public async Task<HttpResponseMessage> GetAsync(string requestUri) {
+            return await _httpClient.GetAsync(requestUri);
         }
-
-        //public async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken) {
-        //	return await _httpClient.GetAsync(requestUri, cancellationToken);
-        //}
 
         public async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken)
         {
