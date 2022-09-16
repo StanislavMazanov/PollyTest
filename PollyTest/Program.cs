@@ -13,9 +13,12 @@ namespace PollyTest
             new Server().Run();
 
 
+            
+            
+            
+            
             Console.WriteLine("Нажмите любую кнопку...");
             Console.ReadKey();
-
         }
     }
 }
